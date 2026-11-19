@@ -44,7 +44,7 @@ jobs:
           <canvas id="c"></canvas><canvas id="m" width="140" height="140"></canvas>
           <div id="hud"><div>🪙 <b id="cn">0</b>/150</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px">🎤<div id="bar"><i style="background:#2c4"></i><i style="background:#ec2"></i><i style="background:#e33"></i><span id="mk"></span></div></div></div>
-          <div id="btns"><button id="b0">360°</button><button id="b1">Квадрат</button><button id="b2">Круг</button><button id="be">Стереть</button><button id="br">Бег</button></div>
+          <div id="btns"><button id="b0">360°</button><button id="b1">Квадрат</button><button id="b2">Круг</button><button id="be">Стереть</button><button id="br">Бег</button><button id="bc">Присед</button></div>
           <div class="ov" id="ov"><h2>РАДАР-ЛАБИРИНТ</h2><div>Монстров: <b id="mv">5</b></div>
           <input type="range" id="ms" min="1" max="25" value="5" style="width:260px"><button id="go">Играть</button>
           <div style="font-size:13px;opacity:.7;max-width:360px">Слева — ходьба, справа — камера. Собери 150 монет по карте. Радар шумит — монстры слышат.</div></div>
@@ -53,18 +53,19 @@ jobs:
           const $=id=>document.getElementById(id);
           let W,H;function rs(){W=cv.width=innerWidth;H=cv.height=innerHeight}rs();addEventListener('resize',rs);
           const N=35,g=new Uint8Array(N*N);
-          const CAP=80000,DX=new Float32Array(CAP),DY=new Float32Array(CAP),DZ=new Float32Array(CAP),DT=new Uint8Array(CAP);let dn=0,dh=0;
+          const CAP=120000,DX=new Float32Array(CAP),DY=new Float32Array(CAP),DZ=new Float32Array(CAP),DT=new Uint8Array(CAP);let dn=0,dh=0;
           const COL=['#4f8','#fd4','#f64'],RAD=[5,10,16],LVL=[.33,.66,1],CD=[.5,.8,2];
-          let P,coins,mons,got,meter,showT,run,cool,over,stepT,t0=0,running=false;
+          let P,coins,mons,got,meter,showT,run,cool,over,stepT,t0=0,running=false,EH=.5,crouch=false,near=0;
           function gen(){g.fill(1);g[N+1]=0;const st=[[1,1]];
           while(st.length){const[x,y]=st[st.length-1];const d=[[2,0],[-2,0],[0,2],[0,-2]].filter(([a,b])=>{const X=x+a,Y=y+b;return X>0&&Y>0&&X<N-1&&Y<N-1&&g[Y*N+X]});
           if(!d.length){st.pop();continue}const[a,b]=d[Math.random()*d.length|0];g[(y+b/2)*N+x+a/2]=0;g[(y+b)*N+x+a]=0;st.push([x+a,y+b])}
-          for(let i=0;i<70;i++){const x=1+(Math.random()*(N-2)|0),y=1+(Math.random()*(N-2)|0);if(g[y*N+x]&&((x%2==0)!=(y%2==0)))g[y*N+x]=0}}
+          for(let i=0;i<70;i++){const x=1+(Math.random()*(N-2)|0),y=1+(Math.random()*(N-2)|0);if(g[y*N+x]&&((x%2==0)!=(y%2==0)))g[y*N+x]=0}
+          for(let y=1;y<N;y+=2)for(let x=1;x<N;x+=2){const o=[[1,0],[-1,0],[0,1],[0,-1]];let n=0;for(const[a,b]of o)if(!g[(y+b)*N+x+a])n++;if(n==1&&Math.random()<.9){const c=o.filter(([a,b])=>{const wx=x+a,wy=y+b,bx=x+2*a,by=y+2*b;return g[wy*N+wx]&&wx>0&&wy>0&&wx<N-1&&wy<N-1&&bx>0&&by>0&&bx<N-1&&by<N-1&&!g[by*N+bx]});if(c.length){const[a,b]=c[Math.random()*c.length|0];g[(y+b)*N+x+a]=0}}}}
           function start(){gen();const op=[];for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(!g[y*N+x]&&(x+y>2))op.push([x,y]);
           op.sort(()=>Math.random()-.5);coins=op.slice(0,150).map(c=>[c[0]+.5,c[1]+.5]);
           const far=op.filter(c=>c[0]+c[1]>14).sort(()=>Math.random()-.5);
           mons=far.slice(0,+$('ms').value).map(c=>({x:c[0]+.5,y:c[1]+.5,gx:c[0],gy:c[1],px:-1,py:-1,t:null}));
-          P={x:1.5,y:1.5,a:0,p:0};got=0;meter=0;showT=0;run=false;cool=0;over=false;stepT=0;dn=0;dh=0;$('br').classList.remove('on');
+          P={x:1.5,y:1.5,a:0,p:0};got=0;meter=0;showT=0;run=false;cool=0;over=false;stepT=0;dn=0;dh=0;crouch=false;EH=.5;near=0;$('br').classList.remove('on');$('bc').classList.remove('on');
           $('cn').textContent=0;$('ov').style.display='none';running=true}
           const solid=(x,y)=>x<0||y<0||x>=N||y>=N||g[(y|0)*N+(x|0)];
           const blk=(x,y,r=.25)=>solid(x-r,y-r)||solid(x+r,y-r)||solid(x-r,y+r)||solid(x+r,y+r);
@@ -72,16 +73,16 @@ jobs:
           function add(x,y,z,t){DX[dh]=x;DY[dh]=y;DZ[dh]=z;DT[dh]=t;dh=(dh+1)%CAP;if(dn<CAP)dn++}
           function cast(a,p,R,t){const ca=Math.cos(a),sa=Math.sin(a),tp=Math.tan(p);let d=0,hit=-1;
           for(d=.06;d<R;d+=.06){if(solid(P.x+ca*d,P.y+sa*d)){hit=d;break}}
-          let z=.5,dd=hit;
-          if(tp<-.001){const df=.5/-tp;if(df<(hit<0?R:hit)){dd=df;z=0}else if(hit>0)z=.5+tp*hit}
-          else if(tp>.001){const dc=.5/tp;if(dc<(hit<0?R:hit)){dd=dc;z=1}else if(hit>0)z=.5+tp*hit}
+          let z=EH,dd=hit;
+          if(tp<-.001){const df=EH/-tp;if(df<(hit<0?R:hit)){dd=df;z=0}else if(hit>0)z=EH+tp*hit}
+          else if(tp>.001){const dc=(1-EH)/tp;if(dc<(hit<0?R:hit)){dd=dc;z=1}else if(hit>0)z=EH+tp*hit}
           if(dd<0||dd>R||(dd==hit&&(z<0||z>1)))return;
-          if(z==.5&&hit>0)z=.5+tp*hit;if(z<0||z>1)return;
+          if(z==EH&&hit>0)z=EH+tp*hit;if(z<0||z>1)return;
           add(P.x+ca*dd,P.y+sa*dd,z,t)}
           function shoot(t){if(cool>0||over||!running)return;cool=CD[t];showT=2;
-          if(t==0)for(let i=0;i<450;i++)cast(i/450*6.283+Math.random()*.05,Math.random()*.9-.35,16,0);
-          else if(t==1)for(let i=0;i<30;i++)for(let j=0;j<22;j++)cast(P.a+(i/29-.5)*1.1,P.p+(j/21-.5)*.8,18,1);
-          else for(let i=0;i<3500;i++)cast(Math.random()*6.283,Math.asin(Math.random()*2-1),16,2);
+          if(t==0)for(let i=0;i<1200;i++)cast(i/1200*6.283+Math.random()*.05,Math.random()*.9-.35,16,0);
+          else if(t==1)for(let i=0;i<36;i++)for(let j=0;j<25;j++)cast(P.a+(i/35-.5)*1.1,P.p+(j/24-.5)*.8,18,1);
+          else for(let i=0;i<12000;i++)cast(Math.random()*6.283,Math.asin(Math.random()*2-1),16,2);
           meter=Math.max(meter,LVL[t]);beep(t);
           for(const m of mons)if(Math.hypot(m.x-P.x,m.y-P.y)<RAD[t])m.t=[P.x|0,P.y|0]}
           let ac;function beep(t){try{ac=ac||new AudioContext();const o=ac.createOscillator(),v=ac.createGain();o.frequency.value=[600,420,200][t];v.gain.value=.08;o.connect(v);v.connect(ac.destination);o.start();v.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.3);o.stop(ac.currentTime+.3)}catch(e){}}
@@ -92,13 +93,13 @@ jobs:
           if(!nx){const f=ns.filter(([x,y])=>x!=m.px||y!=m.py);const l=f.length?f:ns;nx=l[Math.random()*l.length|0]}
           m.px=m.gx;m.py=m.gy;m.gx=nx[0];m.gy=nx[1]}
           function upd(dt){if(!running||over)return;
-          cool-=dt;showT-=dt;
-          const mv=Math.hypot(jx,jy),sp=run?3.4:1.8;
+          cool-=dt;showT-=dt;EH+=((crouch?.25:.5)-EH)*Math.min(1,dt*10);let nd=99;for(const m of mons)nd=Math.min(nd,Math.hypot(m.x-P.x,m.y-P.y));near=Math.max(0,1-nd/4.5);
+          const mv=Math.hypot(jx,jy),sp=crouch?.9:(run?3.4:1.8);
           if(mv>.1){const f=-jy,r=jx,ca=Math.cos(P.a),sa=Math.sin(P.a);
           const vx=(ca*f-sa*r)*sp*dt,vy=(sa*f+ca*r)*sp*dt;
           if(!blk(P.x+vx,P.y))P.x+=vx;if(!blk(P.x,P.y+vy))P.y+=vy;
-          stepT-=dt;const lv=run?.8:.15;meter=Math.max(meter,lv);
-          if(stepT<=0){stepT=.4;const r=run?7:3;for(const m of mons)if(Math.hypot(m.x-P.x,m.y-P.y)<r&&los(m.x,m.y,P.x,P.y))m.t=[P.x|0,P.y|0]}}
+          stepT-=dt;const lv=crouch?0:(run?.6:.15);meter=Math.max(meter,lv);
+          if(stepT<=0){stepT=.4;const r=crouch?0:(run?7:3);for(const m of mons)if(Math.hypot(m.x-P.x,m.y-P.y)<r&&los(m.x,m.y,P.x,P.y))m.t=[P.x|0,P.y|0]}}
           meter=Math.max(0,meter-dt*.5);
           for(let i=coins.length-1;i>=0;i--)if(Math.hypot(coins[i][0]-P.x,coins[i][1]-P.y)<.5){coins.splice(i,1);got++;$('cn').textContent=got;beep(0)}
           for(const m of mons){const s=m.t?1.5:.9,dx=m.gx+.5-m.x,dy=m.gy+.5-m.y,d=Math.hypot(dx,dy);
@@ -107,15 +108,15 @@ jobs:
           if(got>=150){over=true;end('Победа! 🎉 Все 150 монет')}
           $('mk').style.left=Math.min(97,meter*100)+'%'}
           function end(t){$('ov').innerHTML='<h2>'+t+'</h2><button onclick="location.reload()">Заново</button>';$('ov').style.display='flex'}
-          function draw(){cx.fillStyle='#000';cx.fillRect(0,0,W,H);
+          function draw(){cx.fillStyle='#000';cx.fillRect(0,0,W,H);cx.save();if(near>0)cx.translate((Math.random()-.5)*near*14,(Math.random()-.5)*near*14);
           const f=H*1.1,ca=Math.cos(P.a),sa=Math.sin(P.a),hy=H/2+P.p*f*.8,hx=W/2;
           for(let t=0;t<3;t++){cx.fillStyle=COL[t];
           for(let i=0;i<dn;i++){if(DT[i]!=t)continue;const rx=DX[i]-P.x,ry=DY[i]-P.y,d=rx*ca+ry*sa;if(d<.2)continue;
-          const s=-rx*sa+ry*ca,sx=hx+f*s/d,sy=hy-f*(DZ[i]-.5)/d;if(sx<-5||sx>W+5||sy<-5||sy>H+5)continue;
+          const s=-rx*sa+ry*ca,sx=hx+f*s/d,sy=hy-f*(DZ[i]-EH)/d;if(sx<-5||sx>W+5||sy<-5||sy>H+5)continue;
           const z=Math.max(1.5,Math.min(7,f*.022/d));cx.fillRect(sx-z/2,sy-z/2,z,z)}}
           for(const m of mons){const rx=m.x-P.x,ry=m.y-P.y,d=rx*ca+ry*sa;if(d<.3||d>5||!los(P.x,P.y,m.x,m.y))continue;
           const s=-rx*sa+ry*ca;cx.fillStyle='#e22';cx.globalAlpha=1-d/5;cx.beginPath();cx.ellipse(hx+f*s/d,hy,f*.25/d,f*.5/d,0,0,6.3);cx.fill();cx.globalAlpha=1}
-          if(js){cx.strokeStyle='#fff6';cx.lineWidth=2;cx.beginPath();cx.arc(js.x,js.y,45,0,6.3);cx.stroke();cx.beginPath();cx.arc(js.x+jx*45,js.y+jy*45,18,0,6.3);cx.fillStyle='#fff5';cx.fill()}
+          cx.restore();if(near>0){const gr=cx.createRadialGradient(W/2,H/2,H*.25,W/2,H/2,H*.95);gr.addColorStop(0,'rgba(255,0,0,0)');gr.addColorStop(1,'rgba(255,0,0,'+(near*.85)+')');cx.fillStyle=gr;cx.fillRect(0,0,W,H)}if(js){cx.strokeStyle='#fff6';cx.lineWidth=2;cx.beginPath();cx.arc(js.x,js.y,45,0,6.3);cx.stroke();cx.beginPath();cx.arc(js.x+jx*45,js.y+jy*45,18,0,6.3);cx.fillStyle='#fff5';cx.fill()}
           mm.fillStyle='#0a0a0a';mm.fillRect(0,0,140,140);const c=4;
           mm.fillStyle='#667';for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(g[y*N+x])mm.fillRect(x*c,y*c,c,c);
           mm.fillStyle='#fc2';for(const q of coins)mm.fillRect(q[0]*c-1,q[1]*c-1,2.5,2.5);
@@ -128,7 +129,8 @@ jobs:
           cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
           [0,1,2].forEach(i=>$('b'+i).addEventListener('pointerdown',e=>{e.preventDefault();shoot(i)}));
           $('be').addEventListener('pointerdown',e=>{e.preventDefault();dn=0;dh=0});
-          $('br').addEventListener('pointerdown',e=>{e.preventDefault();run=!run;e.target.classList.toggle('on',run)});
+          $('br').addEventListener('pointerdown',e=>{e.preventDefault();run=!run;e.target.classList.toggle('on',run);if(run){crouch=false;$('bc').classList.remove('on')}});
+          $('bc').addEventListener('pointerdown',e=>{e.preventDefault();crouch=!crouch;e.target.classList.toggle('on',crouch);if(crouch){run=false;$('br').classList.remove('on')}});
           $('ms').oninput=()=>$('mv').textContent=$('ms').value;$('go').onclick=start;
           function loop(t){const dt=Math.min(.05,(t-t0)/1000||0);t0=t;if(running){upd(dt);draw()}requestAnimationFrame(loop)}
           requestAnimationFrame(loop);
