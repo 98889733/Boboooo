@@ -139,7 +139,7 @@ jobs:
       - run: cd app && npm install && npx cap add android
       - run: cd app && sed -i 's/<activity/<activity android:screenOrientation="landscape"/' android/app/src/main/AndroidManifest.xml
       - run: cd app && npx cap sync android
-      - run: cd app/android && chmod +x gradlew && ./gradlew assembleDebug
+      - run: cd app/android && chmod +x gradlew && ./gradlew assembleDebug --info
       - uses: actions/upload-artifact@v4
         with:
           name: RadarMaze-APK
